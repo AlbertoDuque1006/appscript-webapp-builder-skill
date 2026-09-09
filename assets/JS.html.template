@@ -1,0 +1,271 @@
+<script>
+  /**
+   * Plantilla base de cliente. Ajustar:
+   * - Nombres de funciones del backend (obtenerRegistros, agregarRegistro, etc.)
+   *   si en Code.gs se les puso un nombre más específico del dominio
+   *   (ej: obtenerMedicamentos, agregarMedicamento).
+   * - Los campos leídos/escritos en guardarRegistro() y abrirModalEditar()
+   *   según las columnas reales.
+   * - renderTabla() para pintar las columnas reales.
+   */
+
+  let REGISTROS = [];
+  let EDITANDO_CODIGO = null;
+  let CODIGO_A_ELIMINAR = null;
+
+  // AJUSTAR: mapa de Estado -> clase CSS del badge, según references/estilos-visuales.md
+  const BADGE_CLASS = {
+    // "Disponible": "badge-disponible",
+  };
+
+  document.addEventListener("DOMContentLoaded", () => {
+    inicializarTema();
+    cargarTodo();
+    enlazarEventos();
+  });
+
+  /* ---------------- Tema claro/oscuro ---------------- */
+  function inicializarTema() {
+    const guardado = localStorage.getItem("app-theme");
+    const sistemaOscuro = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    aplicarTema(guardado || (sistemaOscuro ? "dark" : "light"));
+  }
+  function aplicarTema(tema) {
+    document.documentElement.setAttribute("data-theme", tema);
+    document.getElementById("themeIcon").textContent = tema === "dark" ? "☀️" : "🌙";
+    localStorage.setItem("app-theme", tema);
+  }
+  function toggleTema() {
+    const actual = document.documentElement.getAttribute("data-theme");
+    aplicarTema(actual === "dark" ? "light" : "dark");
+  }
+
+  /* ---------------- Carga inicial ---------------- */
+  function cargarTodo() {
+    mostrarLoader(true);
+    google.script.run
+      .withSuccessHandler((res) => {
+        mostrarLoader(false);
+        if (!res.success) return toast(res.error, "error");
+        REGISTROS = res.data;
+        renderTabla(REGISTROS);
+      })
+      .withFailureHandler((err) => {
+        mostrarLoader(false);
+        toast(err.message || "Error al cargar datos", "error");
+      })
+      .obtenerRegistros(); // AJUSTAR nombre si difiere
+
+    google.script.run
+      .withSuccessHandler((res) => {
+        if (res.success) renderKPIs(res.data);
+      })
+      .obtenerEstadisticas();
+  }
+
+  /* ---------------- KPIs y alerta ---------------- */
+  function renderKPIs(stats) {
+    document.getElementById("kpiTotal").textContent = stats.total;
+    // AJUSTAR: pintar el resto de tarjetas KPI del dominio real
+    // renderAlertaBanner(stats.itemsAlerta || []); // OPCIONAL, ver patron-alertas.md
+  }
+
+  function renderAlertaBanner(items) {
+    const banner = document.getElementById("alertaBanner");
+    if (!banner) return;
+    const texto = document.getElementById("alertaBannerTexto");
+    if (!items.length) { banner.style.display = "none"; return; }
+    const nombres = items.slice(0, 3).map((it) => it.nombre).join(", ");
+    const extra = items.length > 3 ? ` y ${items.length - 3} más` : "";
+    texto.textContent = `${items.length} elemento(s) requieren atención: ${nombres}${extra}.`;
+    banner.style.display = "flex";
+  }
+
+  /* ---------------- Tabla ---------------- */
+  function renderTabla(items) {
+    const tbody = document.getElementById("tablaBody");
+    const empty = document.getElementById("emptyState");
+    tbody.innerHTML = "";
+
+    if (!items.length) { empty.style.display = "block"; return; }
+    empty.style.display = "none";
+
+    items.forEach((it, i) => {
+      const tr = document.createElement("tr");
+      tr.style.animationDelay = `${Math.min(i * 25, 300)}ms`;
+      // AJUSTAR: condición de fila en alerta, si aplica
+      // if (it.cantidad < UMBRAL) tr.classList.add("row-alerta");
+
+      tr.innerHTML = `
+        <td>${it.codigo}</td>
+        <!-- AJUSTAR: agregar <td> por cada columna real -->
+        <td>
+          <div class="row-actions">
+            <button title="Editar" onclick="abrirModalEditar('${it.codigo}')">✏️</button>
+            <button title="Eliminar" onclick="pedirConfirmacionEliminar('${it.codigo}', '${escapeHtml(it.nombre || it.codigo)}')">🗑️</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function badgeEstado(estado) {
+    const clase = BADGE_CLASS[estado] || "badge-agotado";
+    return `<span class="badge ${clase}">${estado || "—"}</span>`;
+  }
+
+  /* ---------------- Filtros y búsqueda ---------------- */
+  function aplicarFiltros() {
+    const texto = document.getElementById("searchInput").value.toLowerCase().trim();
+    const estado = document.getElementById("filtroEstado").value;
+
+    const resultado = REGISTROS.filter((it) => {
+      const coincideTexto = !texto || Object.values(it).join(" ").toLowerCase().includes(texto);
+      const coincideEstado = !estado || it.estado === estado;
+      return coincideTexto && coincideEstado;
+    });
+
+    renderTabla(resultado);
+  }
+
+  /* ---------------- Modal crear/editar ---------------- */
+  function abrirModalNuevo() {
+    EDITANDO_CODIGO = null;
+    document.getElementById("modalTitulo").textContent = "Nuevo registro";
+    document.getElementById("formRegistro").reset();
+    document.getElementById("fCodigo").value = "";
+    abrirOverlay("modalOverlay");
+  }
+
+  function abrirModalEditar(codigo) {
+    const item = REGISTROS.find((c) => c.codigo === codigo);
+    if (!item) return;
+    EDITANDO_CODIGO = codigo;
+    document.getElementById("modalTitulo").textContent = `Editar · ${codigo}`;
+    document.getElementById("fCodigo").value = item.codigo;
+    // AJUSTAR: precargar el resto de campos del formulario
+    abrirOverlay("modalOverlay");
+  }
+
+  function cerrarModal() { cerrarOverlay("modalOverlay"); }
+
+  function guardarRegistro(ev) {
+    ev.preventDefault();
+    const data = {
+      // AJUSTAR: leer cada campo real del formulario
+    };
+
+    mostrarLoader(true);
+    const onOk = (res) => {
+      mostrarLoader(false);
+      if (!res.success) return toast(res.error, "error");
+      toast(EDITANDO_CODIGO ? "Registro actualizado" : "Registro creado", "success");
+      cerrarModal();
+      cargarTodo();
+    };
+    const onFail = (err) => {
+      mostrarLoader(false);
+      toast(err.message || "Error al guardar", "error");
+    };
+
+    if (EDITANDO_CODIGO) {
+      google.script.run.withSuccessHandler(onOk).withFailureHandler(onFail)
+        .actualizarRegistro(EDITANDO_CODIGO, data);
+    } else {
+      google.script.run.withSuccessHandler(onOk).withFailureHandler(onFail)
+        .agregarRegistro(data);
+    }
+  }
+
+  /* ---------------- Eliminar ---------------- */
+  function pedirConfirmacionEliminar(codigo, nombre) {
+    CODIGO_A_ELIMINAR = codigo;
+    document.getElementById("confirmText").textContent = `Se eliminará "${nombre}" (${codigo}). Esta acción no se puede deshacer.`;
+    abrirOverlay("confirmOverlay");
+  }
+
+  function confirmarEliminar() {
+    if (!CODIGO_A_ELIMINAR) return;
+    mostrarLoader(true);
+    google.script.run
+      .withSuccessHandler((res) => {
+        mostrarLoader(false);
+        cerrarOverlay("confirmOverlay");
+        if (!res.success) return toast(res.error, "error");
+        toast("Registro eliminado", "success");
+        cargarTodo();
+      })
+      .withFailureHandler((err) => {
+        mostrarLoader(false);
+        toast(err.message || "Error al eliminar", "error");
+      })
+      .eliminarRegistro(CODIGO_A_ELIMINAR);
+  }
+
+  /* ---------------- Overlays / toasts / loader ---------------- */
+  function abrirOverlay(id) { document.getElementById(id).classList.add("open"); }
+  function cerrarOverlay(id) { document.getElementById(id).classList.remove("open"); }
+
+  function toast(mensaje, tipo = "success") {
+    const contenedor = document.getElementById("toastContainer");
+    const el = document.createElement("div");
+    el.className = `toast ${tipo}`;
+    el.textContent = mensaje;
+    contenedor.appendChild(el);
+    setTimeout(() => {
+      el.classList.add("leaving");
+      setTimeout(() => el.remove(), 280);
+    }, 3200);
+  }
+
+  function mostrarLoader(visible) {
+    document.getElementById("loader").style.display = visible ? "flex" : "none";
+  }
+
+  function escapeHtml(str) {
+    if (str === undefined || str === null) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /* ---------------- Eventos ---------------- */
+  function enlazarEventos() {
+    document.getElementById("themeToggle").addEventListener("click", toggleTema);
+    document.getElementById("btnNuevo").addEventListener("click", abrirModalNuevo);
+    document.getElementById("btnCerrarModal").addEventListener("click", cerrarModal);
+    document.getElementById("btnCancelar").addEventListener("click", cerrarModal);
+    document.getElementById("formRegistro").addEventListener("submit", guardarRegistro);
+
+    document.getElementById("btnCancelarEliminar").addEventListener("click", () => cerrarOverlay("confirmOverlay"));
+    document.getElementById("btnConfirmarEliminar").addEventListener("click", confirmarEliminar);
+
+    document.getElementById("searchInput").addEventListener("input", debounce(aplicarFiltros, 200));
+    document.getElementById("filtroEstado").addEventListener("change", aplicarFiltros);
+    document.getElementById("btnLimpiarFiltros").addEventListener("click", () => {
+      document.getElementById("searchInput").value = "";
+      document.getElementById("filtroEstado").value = "";
+      renderTabla(REGISTROS);
+    });
+
+    const cerrarAlertaBtn = document.getElementById("cerrarAlerta");
+    if (cerrarAlertaBtn) {
+      cerrarAlertaBtn.addEventListener("click", () => {
+        document.getElementById("alertaBanner").style.display = "none";
+      });
+    }
+
+    document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.classList.remove("open");
+      });
+    });
+  }
+
+  function debounce(fn, delay) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delay);
+    };
+  }
+</script>

@@ -1,0 +1,274 @@
+/**
+ * ============================================================
+ *  {{TITULO_APP}} — BACKEND (Google Apps Script)
+ *  Hoja de datos: "{{NOMBRE_PESTAÑA}}"
+ *  Columnas: {{LISTA_COLUMNAS_COMENTARIO}}
+ * ============================================================
+ *  Esta plantilla es un punto de partida. Reemplaza cada
+ *  {{PLACEHOLDER}}, ajusta _rowToObject/_validar a las columnas
+ *  reales, y borra las secciones marcadas OPCIONAL que no apliquen.
+ * ============================================================
+ */
+
+const SHEET_NAME = "{{NOMBRE_PESTAÑA}}";
+const LOG_SHEET_NAME = "Log";
+const PREFIJO_CODIGO = "{{PREFIJO}}"; // ej: "MED", "COMP", "CLI"
+// const EMAIL_ALERTA = "correo@dominio.com"; // OPCIONAL — descomentar si hay alertas por correo
+// const UMBRAL_ALERTA = 50; // OPCIONAL — ajustar unidad de negocio
+
+const ESTADOS_VALIDOS = ["{{ESTADO_1}}", "{{ESTADO_2}}", "{{ESTADO_3}}"]; // ajustar o borrar si no aplica
+
+/* ---------------------- ENTRADA WEB APP ---------------------- */
+
+function doGet(e) {
+  const template = HtmlService.createTemplateFromFile("Index");
+  return template
+    .evaluate()
+    .setTitle("{{TITULO_APP}}")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+/* ---------------------- UTILIDADES INTERNAS ---------------------- */
+
+function _getSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) throw new Error(`No existe la hoja "${SHEET_NAME}"`);
+  return sheet;
+}
+
+function _getLogSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(LOG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(LOG_SHEET_NAME);
+    sheet.appendRow(["Fecha", "Usuario", "Acción", "Código", "Detalle"]);
+    sheet.hideSheet();
+  }
+  return sheet;
+}
+
+function _log(accion, codigo, detalle) {
+  try {
+    const sheet = _getLogSheet();
+    const usuario = Session.getActiveUser().getEmail() || "desconocido";
+    sheet.appendRow([new Date(), usuario, accion, codigo || "", detalle || ""]);
+  } catch (err) {
+    // el log nunca debe tumbar la operación principal
+  }
+}
+
+// AJUSTAR: mapear cada columna (A, B, C...) al nombre de propiedad que usará el frontend.
+// El orden debe coincidir EXACTO con el orden real de columnas en la hoja.
+function _rowToObject(row, rowIndex) {
+  return {
+    rowIndex: rowIndex,
+    codigo: row[0],
+    // nombre: row[1],
+    // categoria: row[2],
+    // cantidad: Number(row[3]) || 0,
+    // estado: row[4],
+    // fecha: row[5] instanceof Date ? row[5].toISOString() : row[5],
+    // observaciones: row[6],
+  };
+}
+
+function _generarCodigo(sheet) {
+  const last = sheet.getLastRow();
+  const codigosExistentes = last < 2
+    ? []
+    : sheet.getRange(2, 1, last - 1, 1).getValues().flat();
+  let intento = 0;
+  let candidato;
+  do {
+    intento++;
+    candidato = PREFIJO_CODIGO + "-" + String(intento).padStart(4, "0");
+  } while (codigosExistentes.indexOf(candidato) !== -1);
+  return candidato;
+}
+
+// AJUSTAR: reglas de validación reales del dominio.
+function _validar(data) {
+  // if (!data.nombre || !data.nombre.trim()) throw new Error("El nombre es obligatorio.");
+  // if (isNaN(Number(data.cantidad)) || Number(data.cantidad) < 0)
+  //   throw new Error("La cantidad debe ser un número válido.");
+  if (data.estado && ESTADOS_VALIDOS.indexOf(data.estado) === -1)
+    throw new Error("Estado no válido.");
+}
+
+/* ---------------------- API PÚBLICA (google.script.run) ---------------------- */
+
+function obtenerRegistros() {
+  try {
+    const sheet = _getSheet();
+    const last = sheet.getLastRow();
+    const numCols = sheet.getLastColumn();
+    if (last < 2) return { success: true, data: [] };
+    const values = sheet.getRange(2, 1, last - 1, numCols).getValues();
+    const data = values
+      .map((row, i) => _rowToObject(row, i + 2))
+      .filter((item) => item.codigo);
+    return { success: true, data: data };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function obtenerEstadisticas() {
+  try {
+    const res = obtenerRegistros();
+    if (!res.success) throw new Error(res.error);
+    const items = res.data;
+
+    const total = items.length;
+    const porEstado = {};
+    items.forEach((it) => {
+      porEstado[it.estado] = (porEstado[it.estado] || 0) + 1;
+    });
+
+    // OPCIONAL — patrón de alerta por umbral, ver references/patron-alertas.md
+    // const itemsAlerta = items
+    //   .filter((it) => it.cantidad < UMBRAL_ALERTA)
+    //   .map((it) => ({ codigo: it.codigo, nombre: it.nombre, valor: it.cantidad }))
+    //   .sort((a, b) => a.valor - b.valor);
+
+    return {
+      success: true,
+      data: {
+        total,
+        porEstado,
+        // itemsAlerta,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+function agregarRegistro(data) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    _validar(data);
+    const sheet = _getSheet();
+    const codigo = _generarCodigo(sheet);
+    const fila = sheet.getLastRow() + 1;
+
+    // AJUSTAR: orden de columnas real
+    sheet.getRange(fila, 1, 1, sheet.getLastColumn()).setValues([[
+      codigo,
+      // data.nombre,
+      // data.categoria,
+      // Number(data.cantidad),
+      // data.estado || ESTADOS_VALIDOS[0],
+      // data.fecha ? new Date(data.fecha) : new Date(),
+      // data.observaciones || "",
+    ]]);
+    SpreadsheetApp.flush();
+
+    _log("CREAR", codigo, data.nombre || "");
+    return { success: true, data: { codigo } };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function actualizarRegistro(codigo, data) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    _validar(data);
+    const sheet = _getSheet();
+    const last = sheet.getLastRow();
+    const codigos = sheet.getRange(2, 1, last - 1, 1).getValues().flat();
+    const idx = codigos.indexOf(codigo);
+    if (idx === -1) throw new Error(`No se encontró el registro ${codigo}`);
+    const fila = idx + 2;
+
+    // AJUSTAR: mismas columnas que agregarRegistro, sin el código (columna A)
+    sheet.getRange(fila, 2, 1, sheet.getLastColumn() - 1).setValues([[
+      // data.nombre,
+      // data.categoria,
+      // Number(data.cantidad),
+      // data.estado,
+      // data.fecha ? new Date(data.fecha) : sheet.getRange(fila, 6).getValue(),
+      // data.observaciones || "",
+    ]]);
+    SpreadsheetApp.flush();
+
+    _log("ACTUALIZAR", codigo, data.nombre || "");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function eliminarRegistro(codigo) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = _getSheet();
+    const last = sheet.getLastRow();
+    const codigos = sheet.getRange(2, 1, last - 1, 1).getValues().flat();
+    const idx = codigos.indexOf(codigo);
+    if (idx === -1) throw new Error(`No se encontró el registro ${codigo}`);
+    sheet.deleteRow(idx + 2);
+
+    _log("ELIMINAR", codigo, "");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function buscarRegistros(filtro) {
+  try {
+    const res = obtenerRegistros();
+    if (!res.success) throw new Error(res.error);
+    let items = res.data;
+    const texto = (filtro.texto || "").toLowerCase().trim();
+
+    if (texto) {
+      items = items.filter((it) =>
+        Object.values(it).join(" ").toLowerCase().includes(texto)
+      );
+    }
+    if (filtro.estado) items = items.filter((it) => it.estado === filtro.estado);
+
+    return { success: true, data: items };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/* ================= OPCIONAL: exportar a CSV ================= */
+// function exportarCSV() {
+//   const res = obtenerRegistros();
+//   if (!res.success) throw new Error(res.error);
+//   const items = res.data;
+//   const headers = Object.keys(items[0] || {}).filter((k) => k !== "rowIndex");
+//   const filas = [headers.join(",")].concat(
+//     items.map((it) => headers.map((h) => `"${String(it[h] ?? "").replace(/"/g, '""')}"`).join(","))
+//   );
+//   return filas.join("\n");
+// }
+
+/* ================= OPCIONAL: permisos simples por correo ================= */
+// const CORREOS_ADMIN = ["admin@dominio.com"];
+// function esAdmin() {
+//   const correo = Session.getActiveUser().getEmail();
+//   return CORREOS_ADMIN.indexOf(correo) !== -1;
+// }
+// Llama a esAdmin() al inicio de agregarRegistro/actualizarRegistro/eliminarRegistro
+// si solo ciertos usuarios deben poder escribir.

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Stylesheet'); ?>
+</head>
+<body>
+  <div class="app" id="app">
+
+    <!-- ===== Topbar ===== -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-dot"></div>
+        <h1>{{TITULO_APP}}</h1>
+      </div>
+
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16">
+          <path fill="currentColor" d="M21 20.3L15.9 15.2C17.2 13.7 18 11.9 18 9.9 18 5.5 14.5 2 10 2S2 5.5 2 9.9s3.5 7.9 8 7.9c2 0 3.8-.7 5.2-2l5.1 5.1 0.7-0.6zM4 9.9C4 6.6 6.7 4 10 4s6 2.6 6 5.9-2.7 5.9-6 5.9-6-2.6-6-5.9z"/>
+        </svg>
+        <input id="searchInput" type="text" placeholder="Buscar…" />
+      </div>
+
+      <div class="topbar-right">
+        <button class="btn-icon" id="themeToggle" title="Cambiar tema">
+          <span id="themeIcon">🌙</span>
+        </button>
+        <button class="btn-primary" id="btnNuevo">
+          <span>＋</span> Nuevo {{NOMBRE_ENTIDAD_SINGULAR}}
+        </button>
+      </div>
+    </header>
+
+    <!-- ===== KPIs — ajustar cantidad/etiquetas al dominio real ===== -->
+    <section class="kpis" id="kpis">
+      <div class="kpi-card" data-kpi="total">
+        <span class="kpi-label">Total {{NOMBRE_ENTIDAD_PLURAL}}</span>
+        <span class="kpi-value" id="kpiTotal">–</span>
+      </div>
+      <!-- Duplicar/ajustar tarjetas KPI según lo que el dominio necesite -->
+    </section>
+
+    <!-- ===== Alerta de umbral — OPCIONAL, borrar si no aplica ===== -->
+    <div class="alert-banner" id="alertaBanner" style="display:none;">
+      <span class="alert-icon">⚠️</span>
+      <span id="alertaBannerTexto"></span>
+      <button class="alert-close" id="cerrarAlerta">✕</button>
+    </div>
+
+    <!-- ===== Filtros — ajustar selects al dominio real ===== -->
+    <section class="filters">
+      <select id="filtroEstado">
+        <option value="">Todos los estados</option>
+        <!-- <option value="{{ESTADO_1}}">{{ESTADO_1}}</option> -->
+      </select>
+      <button class="btn-ghost" id="btnLimpiarFiltros">Limpiar filtros</button>
+    </section>
+
+    <!-- ===== Tabla — ajustar columnas al dominio real ===== -->
+    <section class="table-wrap">
+      <table id="tabla">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <!-- <th>Nombre</th> -->
+            <!-- agregar el resto de columnas -->
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tablaBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state" style="display:none;">
+        <p>No hay {{NOMBRE_ENTIDAD_PLURAL}} que coincidan con la búsqueda 👀</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== Modal crear/editar — ajustar campos al dominio real ===== -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modalTitulo">Nuevo {{NOMBRE_ENTIDAD_SINGULAR}}</h2>
+        <button class="btn-icon" id="btnCerrarModal">✕</button>
+      </div>
+      <form id="formRegistro">
+        <input type="hidden" id="fCodigo" />
+        <div class="form-grid">
+          <!-- <label>Nombre
+            <input type="text" id="fNombre" required />
+          </label> -->
+          <!-- agregar el resto de campos -->
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="btnCancelar">Cancelar</button>
+          <button type="submit" class="btn-primary" id="btnGuardar">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== Confirmación de borrado ===== -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-sm">
+      <h2>¿Eliminar {{NOMBRE_ENTIDAD_SINGULAR}}?</h2>
+      <p id="confirmText" class="muted">Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="btnCancelarEliminar">Cancelar</button>
+        <button class="btn-danger" id="btnConfirmarEliminar">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <div id="loader" class="loader-overlay" style="display:none;">
+    <div class="loader-spinner"></div>
+  </div>
+
+  <?!= include('JS'); ?>
+</body>
+</html>
