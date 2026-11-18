@@ -1,4 +1,9 @@
-# appscript-webapp-builder
+# 🧩 Apps Script WebApp Builder
+
+![Claude Skill](https://img.shields.io/badge/Claude-Skill-D97757?style=flat&logo=anthropic&logoColor=white)
+![Google Apps Script](https://img.shields.io/badge/Google%20Apps%20Script-4285F4?style=flat&logo=google&logoColor=white)
+![Google Sheets](https://img.shields.io/badge/Google%20Sheets-34A853?style=flat&logo=googlesheets&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
 Skill de Claude para crear, corregir y extender aplicaciones web (dashboards, sistemas CRUD, formularios, herramientas de administración) construidas con **Google Apps Script** sobre **Google Sheets**.
 
@@ -45,4 +50,4 @@ python -m scripts.package_skill appscript-webapp-builder-skill ./dist
 
 ## Licencia
 
-Uso personal — ajusta según lo que necesites.
+[MIT](./LICENSE) © Alberto José Duque Gámez
